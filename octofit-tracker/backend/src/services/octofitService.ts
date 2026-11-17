@@ -58,8 +58,28 @@ export async function listTeams() {
   return Team.find().lean();
 }
 
-export async function createTeam(_input: unknown) {
-  throw Object.assign(new Error('Team validation is not implemented yet'), { status: 501 });
+export async function createTeam(input: unknown) {
+  const data = input as Record<string, unknown>;
+
+  // Validate required fields
+  if (!data.name) {
+    const error = new Error('Missing required field: name');
+    throw Object.assign(error, { status: 400 });
+  }
+
+  if (!data.mascot) {
+    const error = new Error('Missing required field: mascot');
+    throw Object.assign(error, { status: 400 });
+  }
+
+  // Create team with optional members
+  const team = await Team.create({
+    name: data.name,
+    mascot: data.mascot,
+    members: (data.members as string[]) || [],
+  });
+
+  return team.toObject();
 }
 
 export async function getLeaderboard() {
