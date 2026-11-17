@@ -219,6 +219,19 @@ test('step one requires a completed architecture plan', () => {
   assert.doesNotThrow(() => checks['step1-architecture'](root));
 });
 
+test('step one accepts bold decision labels but still requires completed values', () => {
+  const root = copyAll();
+  const architecture = path.join(root, 'docs/architecture.md');
+  const text = fs.readFileSync(architecture, 'utf8')
+    .replace(/^- (.+ (?:decision|approach)):/gm, '- **$1**: keep boundaries clear');
+  fs.writeFileSync(architecture, text);
+  assert.doesNotThrow(() => checks['step1-architecture'](root));
+  fs.writeFileSync(architecture, text.replace('**Presentation tier decision**: keep boundaries clear', '**Presentation tier decision**:'));
+  assert.throws(() => checks['step1-architecture'](root), /Architecture plan must complete Presentation tier decision/);
+  fs.writeFileSync(architecture, text.replace('**Logic tier decision**: keep boundaries clear', '**Logic tier decision**: short'));
+  assert.throws(() => checks['step1-architecture'](root), /Architecture plan must complete Logic tier decision/);
+});
+
 test('data grader rejects placeholder seed script', () => {
   const root = copyAll();
   assert.throws(() => checks['step2-data'](root), /required validation|placeholder/);
