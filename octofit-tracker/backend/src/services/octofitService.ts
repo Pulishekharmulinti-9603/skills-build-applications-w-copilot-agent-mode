@@ -83,7 +83,43 @@ export async function createTeam(input: unknown) {
 }
 
 export async function getLeaderboard() {
-  return [];
+  // Aggregate activities by team to get total points per team
+  const teamPoints = await Activity.aggregate([
+    {
+      $group: {
+        _id: '$team',
+        totalPoints: { $sum: '$points' },
+      },
+    },
+    {
+      $lookup: {
+        from: 'teams',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'teamData',
+      },
+    },
+    {
+      $unwind: '$teamData',
+    },
+    {
+      $project: {
+        _id: 1,
+        totalPoints: 1,
+        teamName: '$teamData.name',
+      },
+    },
+    {
+      $sort: { totalPoints: -1 },
+    },
+  ]);
+
+  // Assign 1-based rank to each entry
+  return teamPoints.map((entry, index) => ({
+    teamName: entry.teamName,
+    totalPoints: entry.totalPoints,
+    rank: index + 1,
+  }));
 }
 
 export async function suggestWorkouts(_userEmail: string) {
