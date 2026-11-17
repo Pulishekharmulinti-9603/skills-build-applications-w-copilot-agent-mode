@@ -55,7 +55,11 @@ export async function createActivity(input: unknown) {
 }
 
 export async function listTeams() {
-  return Team.find().lean();
+  const teams = await Team.find().lean();
+  return teams.map(team => ({
+    ...team,
+    members: team.members.map(m => m.toString()),
+  }));
 }
 
 export async function createTeam(input: unknown) {
@@ -79,7 +83,11 @@ export async function createTeam(input: unknown) {
     members: (data.members as string[]) || [],
   });
 
-  return team.toObject();
+  const teamObj = team.toObject();
+  return {
+    ...teamObj,
+    members: teamObj.members.map(m => m.toString()),
+  };
 }
 
 export async function getLeaderboard() {
@@ -122,8 +130,75 @@ export async function getLeaderboard() {
   }));
 }
 
-export async function suggestWorkouts(_userEmail: string) {
-  return Workout.find().limit(1).lean();
+export async function suggestWorkouts(userEmail: string) {
+  // Decode URL-encoded email
+  const decodedEmail = decodeURIComponent(userEmail);
+  
+  // Find user by email
+  const user = await User.findOne({ email: decodedEmail });
+  if (!user) {
+    const error = new Error('User not found');
+    throw Object.assign(error, { status: 404 });
+  }
+
+  // Get user's recent activities to identify patterns
+  const recentActivities = await Activity.find({ user: user._id })
+    .sort({ occurredAt: -1 })
+    .limit(5)
+    .lean();
+
+  // Determine what focus area to suggest based on user's goal and recent activities
+  let suggestedFocus = user.fitnessGoal || 'endurance';
+  
+  // If user has recent activities, consider the most common activity type
+  if (recentActivities.length > 0) {
+    const activityTypes = recentActivities.map(a => a.type);
+    const typeCounts: Record<string, number> = {};
+    activityTypes.forEach(type => {
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    
+    // Map activity types to workout focus areas
+    const typeToFocus: Record<string, string> = {
+      'run': 'endurance',
+      'cycle': 'endurance',
+      'strength': 'strength',
+      'swim': 'endurance',
+      'walk': 'endurance',
+    };
+    
+    // Get the most common type
+    const mostCommonType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (mostCommonType && typeToFocus[mostCommonType]) {
+      suggestedFocus = typeToFocus[mostCommonType];
+    }
+  }
+
+  // Find workouts matching the suggested focus
+  const matchingWorkouts = await Workout.find({ focus: suggestedFocus }).lean();
+  
+  if (matchingWorkouts.length === 0) {
+    // Fallback: return any workout with a reason
+    const anyWorkout = await Workout.findOne().lean();
+    if (!anyWorkout) {
+      return [];
+    }
+    return [{
+      ...anyWorkout,
+      reason: `Workout recommendation based on fitness profile`,
+    }];
+  }
+
+  // Return first matching workout with reason
+  const suggestion = matchingWorkouts[0];
+  const reason = recentActivities.length > 0
+    ? `Suggested based on your recent ${recentActivities[0].type} activity and ${suggestedFocus} goal`
+    : `Suggested to help you achieve your ${suggestedFocus} goal`;
+
+  return [{
+    ...suggestion,
+    reason,
+  }];
 }
 
 export { User };
